@@ -1,0 +1,46 @@
+name: Refresh README metrics
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # METRICS_TOKEN must be a PAT with read access to the private repos listed
+      # in scripts/update_readme_metrics.py; the default GITHUB_TOKEN is scoped
+      # to this repo only and cannot see them.
+      - name: Refresh live metrics
+        env:
+          GH_TOKEN: ${{ secrets.METRICS_TOKEN }}
+        run: python scripts/update_readme_metrics.py
+
+      - name: Rewrite single commit
+        run: |
+          git config user.name "NotVictorNW"
+          git config user.email "notvictornw@users.noreply.github.com"
+          if git diff --quiet -- README.md; then
+            echo "README metrics already up to date."
+          else
+            # Keep exactly one commit in the repository: build a fresh root
+            # commit with the current files and replace main with it.
+            git checkout --orphan metrics-refresh
+            git add -A
+            git commit -m "Initial profile README with live repository metrics"
+            git push --force origin metrics-refresh:main
+          fi
